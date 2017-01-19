@@ -14,33 +14,145 @@ namespace CodeGenerator
         static void Main(string[] args)
         {
             var package = EcoreInterop.LoadPackageFromFile(@"..\..\..\railway.ecore");
+            var deriving = new Dictionary<IEClass, List<IEClass>>();
 
-            using (var sw = new StreamWriter(@"..\..\..\solution\railway.rs"))
+            using (var sw = new StreamWriter(@"..\..\..\solution\src\railway.rs"))
             {
+                foreach (var en in package.EClassifiers.OfType<IEEnum>())
+                {
+                    GenerateEnum(en, sw);
+                }
+
                 // generate traits
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     GenerateTrait(type, sw);
+                    foreach (var baseType in type.ESuperTypes)
+                    {
+                        List<IEClass> derived;
+                        if (!deriving.TryGetValue(baseType, out derived))
+                        {
+                            derived = new List<IEClass>();
+                            deriving.Add(baseType, derived);
+                        }
+                        derived.Add(type);
+                    }
                 }
 
                 // generate structs
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
-                    if (type.Abstract.GetValueOrDefault(false))
+                    List<IEClass> derived;
+                    if (!deriving.TryGetValue(type, out derived) || derived.Count == 0)
                     {
                         GenerateStruct(type, sw);
+                    }
+                    else
+                    {
+                        GenerateEnum(type, derived, sw);
                     }
                 }
 
                 // generate implementations
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
-                    if (type.Abstract.GetValueOrDefault(false))
+                    List<IEClass> derived;
+                    if (!deriving.TryGetValue(type, out derived) || derived.Count == 0)
                     {
                         GenerateImpl(type, GetImplementationName(type), sw);
                     }
+                    else
+                    {
+                        GenerateImpl(type, GetImplementationName(type), derived, sw);
+                    }
                 }
             }
+        }
+
+        private static void GenerateImpl(IEClass type, string target, List<IEClass> derived, StreamWriter sw)
+        {
+            sw.WriteLine($"impl {type.Name.ToPascalCase()} for {target} {{");
+            GenerateFeatureImplementations(type, target, derived, sw);
+            sw.WriteLine("}");
+            foreach (var baseType in type.ESuperTypes)
+            {
+                GenerateImpl(baseType, target, sw);
+            }
+        }
+
+        private static void GenerateFeatureImplementations(IEClass type, string target, List<IEClass> derived, StreamWriter sw)
+        {
+            foreach (var feature in type.EStructuralFeatures)
+            {
+                GenerateFeatureImplementation(feature, derived, target, sw);
+            }
+        }
+
+        private static void GenerateFeatureImplementation(IEStructuralFeature feature, List<IEClass> derived, string target, StreamWriter sw)
+        {
+            if (feature.UpperBound.GetValueOrDefault(1) == 1)
+            {
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> {GetTypeName(feature.EType)} {{");
+                sw.WriteLine($"        match self* {{");
+                foreach (var impl in derived)
+                {
+                    sw.WriteLine($"            {target}::{impl.Name.ToPascalCase()}(i) => i.{feature.Name}");
+                }
+                sw.WriteLine($"        }}");
+                sw.WriteLine("    }");
+                sw.WriteLine($"    fn set_{feature.Name}(&mut self, value: {GetTypeName(feature.EType)}) {{");
+                sw.WriteLine($"        match self* {{");
+                foreach (var impl in derived)
+                {
+                    sw.WriteLine($"            {target}::{impl.Name.ToPascalCase()}(i) => i.{feature.Name} = value");
+                }
+                sw.WriteLine($"        }}");
+                sw.WriteLine("    }");
+            }
+            else
+            {
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> Vec<{GetTypeName(feature.EType)}> {{");
+                sw.WriteLine($"        match self* {{");
+                foreach (var impl in derived)
+                {
+                    sw.WriteLine($"            {target}::{impl.Name.ToPascalCase()}(i) => i.{feature.Name}");
+                }
+                sw.WriteLine($"        }}");
+                sw.WriteLine("    }");
+            }
+        }
+
+        private static void GenerateEnum(IEClass type, List<IEClass> derived, StreamWriter sw)
+        {
+            sw.WriteLine($"pub enum {GetImplementationName(type)} {{");
+            sw.Write($"    {derived[0].Name}({GetImplementationName(derived[0])})");
+            foreach (var subType in derived.Skip(1))
+            {
+                sw.WriteLine(",");
+                sw.Write($"    {subType.Name}({GetImplementationName(subType)})");
+            }
+            sw.WriteLine();
+            sw.WriteLine("}");
+        }
+
+        private static void GenerateEnum(IEEnum en, StreamWriter sw)
+        {
+            sw.WriteLine($"pub enum {en.Name.ToPascalCase()} {{");
+            var first = true;
+            foreach (var lit in en.ELiterals)
+            {
+                if (first)
+                {
+                    first = false;
+                }
+                else
+                {
+                    sw.WriteLine(",");
+                }
+                sw.Write($"    {lit.Name}");
+            }
+            sw.WriteLine();
+            sw.WriteLine("}");
         }
 
         private static string GetImplementationName(IEClass type)
@@ -50,7 +162,7 @@ namespace CodeGenerator
 
         private static void GenerateStruct(IEClass type, StreamWriter sw)
         {
-            sw.WriteLine($"pub struct {GetImplementationName(type)} {{");
+            sw.Write($"pub struct {GetImplementationName(type)} {{ ");
             var first = true;
             GenerateFields(type, sw, ref first);
             sw.WriteLine("}");
@@ -84,7 +196,7 @@ namespace CodeGenerator
             }
             else
             {
-                sw.Write($"{feature.Name}: vec<{GetTypeName(feature.EType)}>");
+                sw.Write($"{feature.Name}: Vec<{GetTypeName(feature.EType)}>");
             }
         }
 
@@ -120,7 +232,7 @@ namespace CodeGenerator
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&self) -> vec<{GetTypeName(feature.EType)}> {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> Vec<{GetTypeName(feature.EType)}> {{");
                 sw.WriteLine($"        self.{feature.Name}");
                 sw.WriteLine("    }");
             }
@@ -145,7 +257,7 @@ namespace CodeGenerator
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&self) -> vec<{GetTypeName(feature.EType)}>;");
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> Vec<{GetTypeName(feature.EType)}>;");
             }
         }
 
@@ -158,11 +270,23 @@ namespace CodeGenerator
                 {
                     case "java.lang.String":
                         return "&'static str";
+                    case "int":
+                        return "i32";
                     default:
                         break;
                 }
             }
-            return null;
+            var cls = eType as IEClass;
+            if (cls != null)
+            {
+                return $"Box<{cls.Name.ToPascalCase()}>";
+            }
+            var en = eType as IEEnum;
+            if (en != null)
+            {
+                return en.Name.ToPascalCase();
+            }
+            throw new ArgumentOutOfRangeException();
         }
     }
 }
