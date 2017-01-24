@@ -26,7 +26,7 @@
     <Code Include="src\main.rs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="src\railway.rs" />
+    <File Include="src\railway.rs" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\VisualRust\VisualRust.Rust.targets" />
 </Project>
