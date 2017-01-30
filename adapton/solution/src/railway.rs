@@ -32,12 +32,12 @@ pub trait Switch<'a> : TrackElement<'a> + Eq + PartialEq + Hash {
 }
 
 pub trait Route<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_entry(&'a self) -> Option<&'a mut SemaphoreImpl<'a>>;
+    fn get_entry(&'a self) -> Option<&'a SemaphoreImpl<'a>>;
     fn set_entry(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>);
-    fn get_follows(&'a mut self) -> &'a mut Vec<&'a mut SwitchPositionImpl<'a>>;
-    fn get_exit(&'a self) -> Option<&'a mut SemaphoreImpl<'a>>;
+    fn get_follows(&'a mut self) -> &'a mut Vec<SwitchPositionImpl<'a>>;
+    fn get_exit(&'a self) -> Option<&'a SemaphoreImpl<'a>>;
     fn set_exit(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>);
-    fn get_definedBy(&'a mut self) -> &'a mut Vec<&'a mut SensorImpl<'a>>;
+    fn get_definedBy(&'a mut self) -> &'a mut Vec<SensorImpl<'a>>;
 }
 
 pub trait Semaphore<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
@@ -46,7 +46,7 @@ pub trait Semaphore<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
 }
 
 pub trait SwitchPosition<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_switch(&'a self) -> Option<&'a mut SwitchImpl<'a>>;
+    fn get_switch(&'a self) -> Option<&'a SwitchImpl<'a>>;
     fn set_switch(&'a mut self, value: Option<&'a mut SwitchImpl<'a>>);
     fn get_position(&'a self) -> Option<Position>;
     fn set_position(&'a mut self, value: Option<Position>);
@@ -58,19 +58,18 @@ pub trait RailwayElement<'a> : Eq + PartialEq + Hash {
 }
 
 pub trait Sensor<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_elements(&'a mut self) -> &'a mut Vec<&'a mut TrackElementImpl<'a>>;
+    fn get_elements(&'a mut self) -> &'a mut Vec<TrackElementImpl<'a>>;
 }
 
 pub trait RailwayContainer<'a> : Eq + PartialEq + Hash {
-    fn get_invalids(&'a mut self) -> &'a mut Vec<&'a mut RailwayElementImpl<'a>>;
-    fn get_semaphores(&'a mut self) -> &'a mut Vec<&'a mut SemaphoreImpl<'a>>;
-    fn get_routes(&'a mut self) -> &'a mut Vec<&'a mut RouteImpl<'a>>;
+    fn get_invalids(&'a mut self) -> &'a mut Vec<RailwayElementImpl<'a>>;
+    fn get_semaphores(&'a mut self) -> &'a mut Vec<SemaphoreImpl<'a>>;
+    fn get_routes(&'a mut self) -> &'a mut Vec<RouteImpl<'a>>;
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Default)]
 pub struct SegmentImpl<'a> {
     length: Option<i32>,
-    sensor: Option<&'a mut SensorImpl<'a>>,
     connectsTo: Vec<&'a mut TrackElementImpl<'a>>,
     id: Option<i32>
 }
@@ -85,7 +84,6 @@ pub enum TrackElementImpl<'a> {
 pub struct SwitchImpl<'a> {
     currentPosition: Option<Position>,
     positions: Vec<&'a mut SwitchPositionImpl<'a>>,
-    sensor: Option<&'a mut SensorImpl<'a>>,
     connectsTo: Vec<&'a mut TrackElementImpl<'a>>,
     id: Option<i32>
 }
@@ -93,9 +91,9 @@ pub struct SwitchImpl<'a> {
 #[derive(Eq, PartialEq, Hash, Debug, Default)]
 pub struct RouteImpl<'a> {
     entry: Option<&'a mut SemaphoreImpl<'a>>,
-    follows: Vec<&'a mut SwitchPositionImpl<'a>>,
+    follows: Vec<SwitchPositionImpl<'a>>,
     exit: Option<&'a mut SemaphoreImpl<'a>>,
-    definedBy: Vec<&'a mut SensorImpl<'a>>,
+    definedBy: Vec<SensorImpl<'a>>,
     id: Option<i32>
 }
 
@@ -110,7 +108,6 @@ pub struct SemaphoreImpl<'a> {
 pub struct SwitchPositionImpl<'a> {
     switch: Option<&'a mut SwitchImpl<'a>>,
     position: Option<Position>,
-    route: Option<&'a mut RouteImpl<'a>>,
     id: Option<i32>
 }
 
@@ -125,15 +122,15 @@ pub enum RailwayElementImpl<'a> {
 
 #[derive(Eq, PartialEq, Hash, Debug, Default)]
 pub struct SensorImpl<'a> {
-    elements: Vec<&'a mut TrackElementImpl<'a>>,
+    elements: Vec<TrackElementImpl<'a>>,
     id: Option<i32>
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Default)]
 pub struct RailwayContainerImpl<'a> {
-    invalids: Vec<&'a mut RailwayElementImpl<'a>>,
-    semaphores: Vec<&'a mut SemaphoreImpl<'a>>,
-    routes: Vec<&'a mut RouteImpl<'a>>
+    invalids: Vec<RailwayElementImpl<'a>>,
+    semaphores: Vec<SemaphoreImpl<'a>>,
+    routes: Vec<RouteImpl<'a>>
 }
 
 impl <'a> Segment<'a> for SegmentImpl<'a> {
@@ -207,22 +204,28 @@ impl <'a> RailwayElement<'a> for SwitchImpl<'a> {
 }
 
 impl <'a> Route<'a> for RouteImpl<'a> {
-    fn get_entry(&'a self) -> Option<&'a mut SemaphoreImpl<'a>> {
-        self.entry.clone()
+    fn get_entry(&'a self) -> Option<&'a SemaphoreImpl<'a>> {
+        match self.entry {
+            None => None,
+            Some(ref val) => Some(val),
+        }
     }
     fn set_entry(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>) {
         self.entry = value
     }
-    fn get_follows(&'a mut self) -> &mut Vec<&'a mut SwitchPositionImpl<'a>> {
+    fn get_follows(&'a mut self) -> &mut Vec<SwitchPositionImpl<'a>> {
         &mut self.follows
     }
-    fn get_exit(&'a self) -> Option<&'a mut SemaphoreImpl<'a>> {
-        self.exit.clone()
+    fn get_exit(&'a self) -> Option<&'a SemaphoreImpl<'a>> {
+        match self.exit {
+            None => None,
+            Some(ref val) => Some(val),
+        }
     }
     fn set_exit(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>) {
         self.exit = value
     }
-    fn get_definedBy(&'a mut self) -> &mut Vec<&'a mut SensorImpl<'a>> {
+    fn get_definedBy(&'a mut self) -> &mut Vec<SensorImpl<'a>> {
         &mut self.definedBy
     }
 }
@@ -253,8 +256,11 @@ impl <'a> RailwayElement<'a> for SemaphoreImpl<'a> {
 }
 
 impl <'a> SwitchPosition<'a> for SwitchPositionImpl<'a> {
-    fn get_switch(&'a self) -> Option<&'a mut SwitchImpl<'a>> {
-        self.switch.clone()
+    fn get_switch(&'a self) -> Option<&'a SwitchImpl<'a>> {
+        match self.switch {
+            None => None,
+            Some(ref val) => Some(val),
+        }
     }
     fn set_switch(&'a mut self, value: Option<&'a mut SwitchImpl<'a>>) {
         self.switch = value
@@ -297,7 +303,7 @@ impl <'a> RailwayElement<'a> for RailwayElementImpl<'a> {
 }
 
 impl <'a> Sensor<'a> for SensorImpl<'a> {
-    fn get_elements(&'a mut self) -> &mut Vec<&'a mut TrackElementImpl<'a>> {
+    fn get_elements(&'a mut self) -> &mut Vec<TrackElementImpl<'a>> {
         &mut self.elements
     }
 }
@@ -311,13 +317,13 @@ impl <'a> RailwayElement<'a> for SensorImpl<'a> {
 }
 
 impl <'a> RailwayContainer<'a> for RailwayContainerImpl<'a> {
-    fn get_invalids(&'a mut self) -> &mut Vec<&'a mut RailwayElementImpl<'a>> {
+    fn get_invalids(&'a mut self) -> &mut Vec<RailwayElementImpl<'a>> {
         &mut self.invalids
     }
-    fn get_semaphores(&'a mut self) -> &mut Vec<&'a mut SemaphoreImpl<'a>> {
+    fn get_semaphores(&'a mut self) -> &mut Vec<SemaphoreImpl<'a>> {
         &mut self.semaphores
     }
-    fn get_routes(&'a mut self) -> &mut Vec<&'a mut RouteImpl<'a>> {
+    fn get_routes(&'a mut self) -> &mut Vec<RouteImpl<'a>> {
         &mut self.routes
     }
 }

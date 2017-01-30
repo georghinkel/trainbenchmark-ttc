@@ -147,6 +147,11 @@ namespace CodeGenerator
         {
             foreach (var feature in type.EStructuralFeatures)
             {
+                var r = feature as IEReference;
+                if (r != null && r.EOpposite != null && r.EOpposite.Containment.GetValueOrDefault(false))
+                {
+                    continue;
+                }
                 if (first)
                 {
                     first = false;
@@ -155,7 +160,6 @@ namespace CodeGenerator
                 {
                     sw.WriteLine(",");
                 }
-                var r = feature as IEReference;
                 if (r != null)
                 {
                     lifetime_needed = true;
@@ -193,11 +197,11 @@ namespace CodeGenerator
         {
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.Write($"{feature.Name}: {GetTypeName(feature.EType, false, lifetime: true)}");
+                sw.Write($"{feature.Name}: {GetTypeName(feature, lifetime: true)}");
             }
             else
             {
-                sw.Write($"{feature.Name}: {GetTypeName(feature.EType, true, lifetime: true)}");
+                sw.Write($"{feature.Name}: {GetTypeName(feature, lifetime: true)}");
             }
         }
 
@@ -230,16 +234,26 @@ namespace CodeGenerator
             var r = feature as IEReference;
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature.EType, false)} {{");
-                sw.WriteLine($"        self.{feature.Name}.clone()");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)} {{");
+                if (r != null)
+                {
+                    sw.WriteLine($"        match self.{feature.Name} {{");
+                    sw.WriteLine("            None => None,");
+                    sw.WriteLine("            Some(ref val) => Some(val),");
+                    sw.WriteLine("        }");
+                }
+                else
+                {
+                    sw.WriteLine($"        self.{feature.Name}.clone()");
+                }
                 sw.WriteLine("    }");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature.EType, false)}) {{");
+                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)}) {{");
                 sw.WriteLine($"        self.{feature.Name} = value");
                 sw.WriteLine("    }");
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature.EType, true)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature)} {{");
                 sw.WriteLine($"        &mut self.{feature.Name}");
                 sw.WriteLine("    }");
             }
@@ -263,7 +277,7 @@ namespace CodeGenerator
             var r = feature as IEReference;
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature.EType, false)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)} {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -271,7 +285,7 @@ namespace CodeGenerator
                 }
                 sw.WriteLine($"        }}");
                 sw.WriteLine("    }");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature.EType, false)}) {{");
+                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)}) {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -282,7 +296,7 @@ namespace CodeGenerator
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature.EType, true)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature)} {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -318,20 +332,21 @@ namespace CodeGenerator
         {
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature.EType, false)};");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature.EType, false)});");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)};");
+                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)});");
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &'a mut {GetTypeName(feature.EType, true)};");
+                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &'a mut {GetTypeName(feature)};");
             }
         }
 
-        private static string GetTypeName(IEClassifier eType, bool collection, bool lifetime = false)
+        private static string GetTypeName(IEStructuralFeature feature, bool lifetime = false, bool mutable = true)
         {
-            var dataType = eType as EDataType;
-            var boxType = collection ? "Vec" : "Option";
-            var lifetimeSpec = lifetime ? "'a mut" : "'a mut";
+            var dataType = feature.EType as EDataType;
+            var boxType = feature.UpperBound.GetValueOrDefault(1) != 1 ? "Vec" : "Option";
+            var lifetimeSpec = "'a";
+            if (mutable) lifetimeSpec += " mut";
             var lifetimePost = lifetime ? "<'a>" : "";
             if (dataType != null)
             {
@@ -345,12 +360,20 @@ namespace CodeGenerator
                         break;
                 }
             }
-            var cls = eType as IEClass;
+            var cls = feature.EType as IEClass;
             if (cls != null)
             {
-                return $"{boxType}<&{lifetimeSpec} {GetImplementationName(cls)}<'a>>";
+                var r = feature as IEReference;
+                if (r != null && r.Containment.GetValueOrDefault(false))
+                {
+                    return $"{boxType}<{GetImplementationName(cls)}<'a>>";
+                }
+                else
+                {
+                    return $"{boxType}<&{lifetimeSpec} {GetImplementationName(cls)}<'a>>";
+                }
             }
-            var en = eType as IEEnum;
+            var en = feature.EType as IEEnum;
             if (en != null)
             {
                 return $"{boxType}<{en.Name.ToPascalCase()}>";

@@ -19,7 +19,7 @@ pub fn load(file_name :String) {
 
     let parser = EventReader::new(file);
     let mut depth = 0;
-    let mut container = railway::RailwayContainerImpl::new();
+    let mut container = railway::RailwayContainerImpl::default();
     for e in parser {
         match e {
             Ok(XmlEvent::StartElement { name, attributes, namespace }) => {
