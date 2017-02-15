@@ -18,6 +18,11 @@ namespace CodeGenerator
 
             using (var sw = new StreamWriter(@"..\..\..\solution\src\railway.rs"))
             {
+                sw.WriteLine("#[macro_use] extern crate adapton;");
+                sw.WriteLine("#[macro_use] extern crate lazy_static;");
+                sw.WriteLine("extern crate regex;");
+                sw.WriteLine();
+                sw.WriteLine();
                 sw.WriteLine("use adapton::engine::*;");
                 sw.WriteLine();
                 sw.WriteLine("use std::hash::Hash;");
@@ -30,6 +35,8 @@ namespace CodeGenerator
                 sw.WriteLine("use xml::reader::{ EventReader, XmlEvent};");
                 sw.WriteLine("use xml::name::OwnedName;");
                 sw.WriteLine("use xml::attribute::OwnedAttribute;");
+                sw.WriteLine();
+                sw.WriteLine("use regex::Regex;");
                 sw.WriteLine();
                 sw.WriteLine("// generated enums");
                 foreach (var en in package.EClassifiers.OfType<IEEnum>())
