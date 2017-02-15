@@ -1,3 +1,8 @@
+#[macro_use] extern crate adapton;
+#[macro_use] extern crate lazy_static;
+extern crate regex;
+
+
 use adapton::engine::*;
 
 use std::hash::Hash;
@@ -10,6 +15,8 @@ use std::ops::Deref;
 use xml::reader::{ EventReader, XmlEvent};
 use xml::name::OwnedName;
 use xml::attribute::OwnedAttribute;
+
+use regex::Regex;
 
 // generated enums
 #[derive(Eq, PartialEq, Clone, Copy, Hash, Debug)]
@@ -35,6 +42,10 @@ pub trait Segment : TrackElement + Debug {
 
 pub trait TrackElement : RailwayElement + Debug {
     fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>>;
+    fn cast_segment(&self) -> Option<&Segment>;
+    fn cast_segment_mut(&mut self) -> Option<&mut Segment>;
+    fn cast_switch(&self) -> Option<&Switch>;
+    fn cast_switch_mut(&mut self) -> Option<&mut Switch>;
 }
 
 pub trait Switch : TrackElement + Debug {
@@ -67,6 +78,16 @@ pub trait SwitchPosition : RailwayElement + Debug {
 pub trait RailwayElement : Debug {
     fn get_id(&self) -> Option<i32>;
     fn set_id(&mut self, value: Option<i32>);
+    fn cast_trackElement(&self) -> Option<&TrackElement>;
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement>;
+    fn cast_route(&self) -> Option<&Route>;
+    fn cast_route_mut(&mut self) -> Option<&mut Route>;
+    fn cast_semaphore(&self) -> Option<&Semaphore>;
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore>;
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition>;
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition>;
+    fn cast_sensor(&self) -> Option<&Sensor>;
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor>;
 }
 
 pub trait Sensor : RailwayElement + Debug {
@@ -158,6 +179,10 @@ impl TrackElement for SegmentImpl {
     fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         &mut self.connectsTo
     }
+    fn cast_segment(&self) -> Option<&Segment> { Some(self) }
+    fn cast_segment_mut(&mut self) -> Option<&mut Segment> { Some(self) }
+    fn cast_switch(&self) -> Option<&Switch> { None }
+    fn cast_switch_mut(&mut self) -> Option<&mut Switch> { None }
 }
 impl RailwayElement for SegmentImpl {
     fn get_id(&self) -> Option<i32> {
@@ -166,6 +191,16 @@ impl RailwayElement for SegmentImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { Some(self) }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { Some(self) }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl TrackElement for TrackElementImpl {
@@ -173,6 +208,30 @@ impl TrackElement for TrackElementImpl {
         match *self {
             TrackElementImpl::Segment(ref mut i) => i.get_connectsTo(),
             TrackElementImpl::Switch(ref mut i) => i.get_connectsTo(),
+        }
+    }
+    fn cast_segment(&self) -> Option<&Segment> {
+        match *self {
+            TrackElementImpl::Segment(ref i) => Some(self),
+            TrackElementImpl::Switch(ref i) => None,
+        }
+    }
+    fn cast_segment_mut(&mut self) -> Option<&mut Segment> {
+        match *self {
+            TrackElementImpl::Segment(ref i) => Some(self),
+            TrackElementImpl::Switch(ref i) => None,
+        }
+    }
+    fn cast_switch(&self) -> Option<&Switch> {
+        match *self {
+            TrackElementImpl::Segment(ref i) => None,
+            TrackElementImpl::Switch(ref i) => Some(self),
+        }
+    }
+    fn cast_switch_mut(&mut self) -> Option<&mut Switch> {
+        match *self {
+            TrackElementImpl::Segment(ref i) => None,
+            TrackElementImpl::Switch(ref i) => Some(self),
         }
     }
 }
@@ -189,6 +248,16 @@ impl RailwayElement for TrackElementImpl {
             TrackElementImpl::Switch(ref mut i) => i.set_id(value),
         }
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { Some(self) }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { Some(self) }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl Switch for SwitchImpl {
@@ -206,6 +275,10 @@ impl TrackElement for SwitchImpl {
     fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         &mut self.connectsTo
     }
+    fn cast_segment(&self) -> Option<&Segment> { None }
+    fn cast_segment_mut(&mut self) -> Option<&mut Segment> { None }
+    fn cast_switch(&self) -> Option<&Switch> { Some(self) }
+    fn cast_switch_mut(&mut self) -> Option<&mut Switch> { Some(self) }
 }
 impl RailwayElement for SwitchImpl {
     fn get_id(&self) -> Option<i32> {
@@ -214,6 +287,16 @@ impl RailwayElement for SwitchImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { Some(self) }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { Some(self) }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl Route for RouteImpl {
@@ -249,6 +332,16 @@ impl RailwayElement for RouteImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { None }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { None }
+    fn cast_route(&self) -> Option<&Route> { Some(self) }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { Some(self) }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl Semaphore for SemaphoreImpl {
@@ -266,6 +359,16 @@ impl RailwayElement for SemaphoreImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { None }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { None }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { Some(self) }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { Some(self) }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl SwitchPosition for SwitchPositionImpl {
@@ -292,6 +395,16 @@ impl RailwayElement for SwitchPositionImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { None }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { None }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { Some(self) }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { Some(self) }
+    fn cast_sensor(&self) -> Option<&Sensor> { None }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { None }
 }
 
 impl RailwayElement for RailwayElementImpl {
@@ -313,6 +426,96 @@ impl RailwayElement for RailwayElementImpl {
             RailwayElementImpl::Sensor(ref mut i) => i.set_id(value),
         }
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => Some(self),
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => Some(self),
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_route(&self) -> Option<&Route> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => Some(self),
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => Some(self),
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_semaphore(&self) -> Option<&Semaphore> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => Some(self),
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => Some(self),
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => Some(self),
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => Some(self),
+            RailwayElementImpl::Sensor(ref i) => None,
+        }
+    }
+    fn cast_sensor(&self) -> Option<&Sensor> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => Some(self),
+        }
+    }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> {
+        match *self {
+            RailwayElementImpl::TrackElement(ref i) => None,
+            RailwayElementImpl::Route(ref i) => None,
+            RailwayElementImpl::Semaphore(ref i) => None,
+            RailwayElementImpl::SwitchPosition(ref i) => None,
+            RailwayElementImpl::Sensor(ref i) => Some(self),
+        }
+    }
 }
 
 impl Sensor for SensorImpl {
@@ -327,6 +530,16 @@ impl RailwayElement for SensorImpl {
     fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
+    fn cast_trackElement(&self) -> Option<&TrackElement> { None }
+    fn cast_trackElement_mut(&mut self) -> Option<&mut TrackElement> { None }
+    fn cast_route(&self) -> Option<&Route> { None }
+    fn cast_route_mut(&mut self) -> Option<&mut Route> { None }
+    fn cast_semaphore(&self) -> Option<&Semaphore> { None }
+    fn cast_semaphore_mut(&mut self) -> Option<&mut Semaphore> { None }
+    fn cast_switchPosition(&self) -> Option<&SwitchPosition> { None }
+    fn cast_switchPosition_mut(&mut self) -> Option<&mut SwitchPosition> { None }
+    fn cast_sensor(&self) -> Option<&Sensor> { Some(self) }
+    fn cast_sensor_mut(&mut self) -> Option<&mut Sensor> { Some(self) }
 }
 
 impl RailwayContainer for RailwayContainerImpl {
@@ -342,7 +555,7 @@ impl RailwayContainer for RailwayContainerImpl {
 }
 
 // generated parser
-fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a String) -> &'a String {
+fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a str) -> &'a str {
 	for att in attributes {
 		match att.name.prefix {
 			Some(ref prefix) => {
@@ -357,6 +570,7 @@ fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a String) -> 
 }
 #[derive(Clone)]
 enum ParserState {
+    Root,
     Segment(Rc<Box<Segment>>),
     Switch(Rc<Box<Switch>>),
     Route(Rc<Box<Route>>),
@@ -365,8 +579,15 @@ enum ParserState {
     Sensor(Rc<Box<Sensor>>),
     RailwayContainer(Rc<Box<RailwayContainer>>),
 }
+enum NeedResolve {
+    TrackElementConnectsTo { element : Rc<Box<TrackElement>>, reference : String },
+    SwitchPositions { element : Rc<Box<Switch>>, reference : String },
+    RouteEntry { element : Rc<Box<Route>>, reference : String },
+    RouteExit { element : Rc<Box<Route>>, reference : String },
+    SwitchPositionSwitch { element : Rc<Box<SwitchPosition>>, reference : String },
+}
 impl ParserState {
-    fn push(reference : &String, stack : &mut Vec<ParserState>) {
+    fn push(reference : &str, attributes : &Vec<OwnedAttribute>, stack : &mut Vec<ParserState>) {
         if reference == "hu.bme.mit.trainbenchmark:Segment" {
             let element : Rc<Box<Segment>> = Rc::new(Box::new(SegmentImpl::default()));
             stack.push(ParserState::Segment(element));
@@ -406,60 +627,229 @@ impl ParserState {
             }
             XmlEvent::StartElement { name, attributes, namespace } => {
                 match *self {
+                    ParserState::Root => {
+                        let mut fullName : String = String::from(name.prefix.unwrap());
+                        fullName.push(':');
+                        fullName.push_str(&name.local_name);
+                        ParserState::push(&fullName, &attributes, stack);
+                    },
                     ParserState::Segment(ref element) => {
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::Switch(ref element) => {
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::Route(ref element) => {
                         if name.local_name == "follows" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:SwitchPosition");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:SwitchPosition";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         if name.local_name == "definedBy" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:Sensor");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:Sensor";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::Semaphore(ref element) => {
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::SwitchPosition(ref element) => {
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::Sensor(ref element) => {
                         if name.local_name == "elements" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:TrackElement");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:TrackElement";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         panic!("Unexpected element found");
-                    }
+                    },
                     ParserState::RailwayContainer(ref element) => {
                         if name.local_name == "invalids" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:RailwayElement");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:RailwayElement";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         if name.local_name == "semaphores" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:Semaphore");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:Semaphore";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         if name.local_name == "routes" {
-                            let r_name = String::from("hu.bme.mit.trainbenchmark:Route");
-                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            let r_name = "hu.bme.mit.trainbenchmark:Route";
+                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);
                             return;
                         }
                         panic!("Unexpected element found");
-                    }
+                    },
                 }
             }
             _ => {},
+        }
+    }
+}
+impl NeedResolve {
+    fn resolve(self, root : Rc<Box<RailwayContainer>>) {
+        match self {
+            NeedResolve::TrackElementConnectsTo { element : Rc<Box<TrackElement>>, reference : String } => {
+                lazy_static! {
+                    static ref InvalidsRE : Regex = Regex::new("^#//invalids\.(\d+)/$").unwrap();
+                }
+                if InvalidsRE.is_match(reference) {
+                    let cap = InvalidsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_trackElement().unwrap();
+                    element.get_connectsTo().push(invalids);
+                    return;
+                }
+                lazy_static! {
+                    static ref InvalidsDefinedByElementsRE : Regex = Regex::new("^#//invalids\.(\d+)/definedBy\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if InvalidsDefinedByElementsRE.is_match(reference) {
+                    let cap = InvalidsDefinedByElementsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_route().unwrap();
+                    let definedBy = invalids.get_definedBy()[cap[2].parse::<i32>.unwrap()];
+                    let elements = definedBy.get_elements()[cap[3].parse::<i32>.unwrap()];
+                    element.get_connectsTo().push(elements);
+                    return;
+                }
+                lazy_static! {
+                    static ref InvalidsElementsRE : Regex = Regex::new("^#//invalids\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if InvalidsElementsRE.is_match(reference) {
+                    let cap = InvalidsElementsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_sensor().unwrap();
+                    let elements = invalids.get_elements()[cap[2].parse::<i32>.unwrap()];
+                    element.get_connectsTo().push(elements);
+                    return;
+                }
+                lazy_static! {
+                    static ref RoutesDefinedByElementsRE : Regex = Regex::new("^#//routes\.(\d+)/definedBy\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if RoutesDefinedByElementsRE.is_match(reference) {
+                    let cap = RoutesDefinedByElementsRE.captures(reference).unwrap();
+                    let routes = root.get_routes()[cap[1].parse::<i32>.unwrap()];
+                    let definedBy = routes.get_definedBy()[cap[2].parse::<i32>.unwrap()];
+                    let elements = definedBy.get_elements()[cap[3].parse::<i32>.unwrap()];
+                    element.get_connectsTo().push(elements);
+                    return;
+                }
+            },
+            NeedResolve::SwitchPositions { element : Rc<Box<Switch>>, reference : String } => {
+                lazy_static! {
+                    static ref InvalidsFollowsRE : Regex = Regex::new("^#//invalids\.(\d+)/follows\.(\d+)/$").unwrap();
+                }
+                if InvalidsFollowsRE.is_match(reference) {
+                    let cap = InvalidsFollowsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_route().unwrap();
+                    let follows = invalids.get_follows()[cap[2].parse::<i32>.unwrap()];
+                    element.get_positions().push(follows);
+                    return;
+                }
+                lazy_static! {
+                    static ref InvalidsRE : Regex = Regex::new("^#//invalids\.(\d+)/$").unwrap();
+                }
+                if InvalidsRE.is_match(reference) {
+                    let cap = InvalidsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_switchPosition().unwrap();
+                    element.get_positions().push(invalids);
+                    return;
+                }
+                lazy_static! {
+                    static ref RoutesFollowsRE : Regex = Regex::new("^#//routes\.(\d+)/follows\.(\d+)/$").unwrap();
+                }
+                if RoutesFollowsRE.is_match(reference) {
+                    let cap = RoutesFollowsRE.captures(reference).unwrap();
+                    let routes = root.get_routes()[cap[1].parse::<i32>.unwrap()];
+                    let follows = routes.get_follows()[cap[2].parse::<i32>.unwrap()];
+                    element.get_positions().push(follows);
+                    return;
+                }
+            },
+            NeedResolve::RouteEntry { element : Rc<Box<Route>>, reference : String } => {
+                lazy_static! {
+                    static ref InvalidsRE : Regex = Regex::new("^#//invalids\.(\d+)/$").unwrap();
+                }
+                if InvalidsRE.is_match(reference) {
+                    let cap = InvalidsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_semaphore().unwrap();
+                    element.set_entry(Some(invalids));
+                    return;
+                }
+                lazy_static! {
+                    static ref SemaphoresRE : Regex = Regex::new("^#//semaphores\.(\d+)/$").unwrap();
+                }
+                if SemaphoresRE.is_match(reference) {
+                    let cap = SemaphoresRE.captures(reference).unwrap();
+                    let semaphores = root.get_semaphores()[cap[1].parse::<i32>.unwrap()];
+                    element.set_entry(Some(semaphores));
+                    return;
+                }
+            },
+            NeedResolve::RouteExit { element : Rc<Box<Route>>, reference : String } => {
+                lazy_static! {
+                    static ref InvalidsRE : Regex = Regex::new("^#//invalids\.(\d+)/$").unwrap();
+                }
+                if InvalidsRE.is_match(reference) {
+                    let cap = InvalidsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_semaphore().unwrap();
+                    element.set_exit(Some(invalids));
+                    return;
+                }
+                lazy_static! {
+                    static ref SemaphoresRE : Regex = Regex::new("^#//semaphores\.(\d+)/$").unwrap();
+                }
+                if SemaphoresRE.is_match(reference) {
+                    let cap = SemaphoresRE.captures(reference).unwrap();
+                    let semaphores = root.get_semaphores()[cap[1].parse::<i32>.unwrap()];
+                    element.set_exit(Some(semaphores));
+                    return;
+                }
+            },
+            NeedResolve::SwitchPositionSwitch { element : Rc<Box<SwitchPosition>>, reference : String } => {
+                lazy_static! {
+                    static ref InvalidsRE : Regex = Regex::new("^#//invalids\.(\d+)/$").unwrap();
+                }
+                if InvalidsRE.is_match(reference) {
+                    let cap = InvalidsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_trackElement().unwrap().cast_switch().unwrap();
+                    element.set_switch(Some(invalids));
+                    return;
+                }
+                lazy_static! {
+                    static ref InvalidsDefinedByElementsRE : Regex = Regex::new("^#//invalids\.(\d+)/definedBy\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if InvalidsDefinedByElementsRE.is_match(reference) {
+                    let cap = InvalidsDefinedByElementsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_route().unwrap();
+                    let definedBy = invalids.get_definedBy()[cap[2].parse::<i32>.unwrap()];
+                    let elements = definedBy.get_elements()[cap[3].parse::<i32>.unwrap()].cast_switch().unwrap();
+                    element.set_switch(Some(elements));
+                    return;
+                }
+                lazy_static! {
+                    static ref InvalidsElementsRE : Regex = Regex::new("^#//invalids\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if InvalidsElementsRE.is_match(reference) {
+                    let cap = InvalidsElementsRE.captures(reference).unwrap();
+                    let invalids = root.get_invalids()[cap[1].parse::<i32>.unwrap()].cast_sensor().unwrap();
+                    let elements = invalids.get_elements()[cap[2].parse::<i32>.unwrap()].cast_switch().unwrap();
+                    element.set_switch(Some(elements));
+                    return;
+                }
+                lazy_static! {
+                    static ref RoutesDefinedByElementsRE : Regex = Regex::new("^#//routes\.(\d+)/definedBy\.(\d+)/elements\.(\d+)/$").unwrap();
+                }
+                if RoutesDefinedByElementsRE.is_match(reference) {
+                    let cap = RoutesDefinedByElementsRE.captures(reference).unwrap();
+                    let routes = root.get_routes()[cap[1].parse::<i32>.unwrap()];
+                    let definedBy = routes.get_definedBy()[cap[2].parse::<i32>.unwrap()];
+                    let elements = definedBy.get_elements()[cap[3].parse::<i32>.unwrap()].cast_switch().unwrap();
+                    element.set_switch(Some(elements));
+                    return;
+                }
+            },
         }
     }
 }
@@ -468,13 +858,13 @@ pub fn load(file_name :String) {
     let file = BufReader::new(file);
 
     let parser = EventReader::new(file);
-    let mut container = RailwayContainerImpl::default();
-    let mut state : ParserState;
+    let mut stack : Vec<ParserState> = Vec<ParserState>::new();
+    let mut resolves : Vec<NeedResolve> = Vec<NeedResolve>::new();
+    let root : ParserState = ParserState::Root;
+    stack.push(root);
+    let mut state : &ParserState = &stack[0];
     for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement { name, attributes, namespace }) => {
-            }
-            _ => {}
-        }
+        state.parse(e, &stack);
+        state = &stack[stack.len()-1];
     }
 }

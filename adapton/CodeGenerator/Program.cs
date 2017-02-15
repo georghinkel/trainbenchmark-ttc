@@ -9,12 +9,69 @@ using NMF.Utilities;
 
 namespace CodeGenerator
 {
+    class Path : IEquatable<Path>
+    {
+        public Path(List<IEReference> references)
+        {
+            Segments = references;
+        }
+
+        public List<IEReference> Segments { get; private set; }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as Path);
+        }
+
+        public bool Equals(Path other)
+        {
+            if (other == null) return false;
+            return Segments.SequenceEqual(other.Segments);
+        }
+
+        public override int GetHashCode()
+        {
+            var hash = 0;
+            foreach (var seg in Segments)
+            {
+                hash ^= seg.GetHashCode();
+            }
+            return hash;
+        }
+
+        public override string ToString()
+        {
+            return string.Join("", Segments.Select(r => r.Name.ToPascalCase()));
+        }
+
+        public string PrintRegex()
+        {
+            var sb = new StringBuilder();
+            sb.Append("^#//");
+            foreach (var r in Segments)
+            {
+                sb.Append(r.Name);
+                if (r.UpperBound != 1)
+                {
+                    sb.Append(@"\.(\d+)");
+                }
+                sb.Append("/");
+            }
+            sb.Append("$");
+            return sb.ToString();
+        }
+    }
+
     class Program
     {
         static void Main(string[] args)
         {
             var package = EcoreInterop.LoadPackageFromFile(@"..\..\..\railway.ecore");
-            var deriving = new Dictionary<IEClass, List<IEClass>>();
+            var subTypes = new Dictionary<IEClass, List<IEClass>>();
+            var root = package.EClassifiers.FirstOrDefault(c => c.Name == "RailwayContainer") as IEClass;
+            var paths = new Dictionary<IEClass, List<Path>>();
+
+            PopulateDerivingAndPaths(package, root, subTypes, paths);
 
             using (var sw = new StreamWriter(@"..\..\..\solution\src\railway.rs"))
             {
@@ -48,25 +105,17 @@ namespace CodeGenerator
                 sw.WriteLine("// generated traits");
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
-                    GenerateTrait(type, sw);
+                    List<IEClass> derived;
+                    subTypes.TryGetValue(type, out derived);
+                    GenerateTrait(type, sw, derived);
                     sw.WriteLine();
-                    foreach (var baseType in type.ESuperTypes)
-                    {
-                        List<IEClass> derived;
-                        if (!deriving.TryGetValue(baseType, out derived))
-                        {
-                            derived = new List<IEClass>();
-                            deriving.Add(baseType, derived);
-                        }
-                        derived.Add(type);
-                    }
                 }
 
                 sw.WriteLine("// generated structs");
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     List<IEClass> derived;
-                    if (!deriving.TryGetValue(type, out derived) || derived.Count == 0)
+                    if (!subTypes.TryGetValue(type, out derived) || derived.Count == 0)
                     {
                         GenerateStruct(type, sw);
                     }
@@ -81,30 +130,121 @@ namespace CodeGenerator
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     List<IEClass> derived;
-                    if (!deriving.TryGetValue(type, out derived) || derived.Count == 0)
+                    if (!subTypes.TryGetValue(type, out derived) || derived.Count == 0)
                     {
-                        GenerateImpl(type, GetImplementationName(type), sw);
+                        GenerateStructImpl(type, null, GetImplementationName(type), subTypes, sw);
                     }
                     else
                     {
-                        GenerateImpl(type, GetImplementationName(type), derived, sw);
+                        GenerateEnumImpl(type, null, GetImplementationName(type), derived, subTypes, sw);
                     }
                     sw.WriteLine();
                 }
 
                 sw.WriteLine("// generated parser");
-                GenerateParserState(package.EClassifiers.OfType<IEClass>(), package.NsPrefix, sw);
+                GenerateParserState(package.EClassifiers.OfType<IEClass>(), package.NsPrefix, root, paths, sw);
             }
         }
 
-        private static void GenerateImpl(IEClass type, string target, List<IEClass> derived, StreamWriter sw)
+        private static void PopulateDerivingAndPaths(EPackage package, IEClass rc, Dictionary<IEClass, List<IEClass>> deriving, Dictionary<IEClass, List<Path>> paths)
+        {
+            foreach (var type in package.EClassifiers.OfType<IEClass>())
+            {
+                foreach (var baseType in type.ESuperTypes)
+                {
+                    List<IEClass> derived;
+                    if (!deriving.TryGetValue(baseType, out derived))
+                    {
+                        derived = new List<IEClass>();
+                        deriving.Add(baseType, derived);
+                    }
+                    derived.Add(type);
+                }
+            }
+
+            var currentPath = new List<IEReference>();
+            PopulatePaths(rc, currentPath, paths, deriving);
+        }
+
+        private static void PopulatePaths(IEClass rc, List<IEReference> currentPath, Dictionary<IEClass, List<Path>> paths, Dictionary<IEClass, List<IEClass>> deriving)
+        {
+            foreach (var r in rc.EStructuralFeatures.OfType<IEReference>())
+            {
+                if (!r.Containment.GetValueOrDefault(false)) continue;
+                var targetType = r.EType as IEClass;
+                var list = new List<IEReference>(currentPath);
+                list.Add(r);
+                AddPath(list, paths, deriving, r, targetType);
+            }
+        }
+
+        private static void AddPath(List<IEReference> currentPath, Dictionary<IEClass, List<Path>> paths, Dictionary<IEClass, List<IEClass>> deriving, IEReference r, IEClass targetType)
+        {
+            List<Path> pathsOfType;
+            if (!paths.TryGetValue(targetType, out pathsOfType))
+            {
+                pathsOfType = new List<Path>();
+                paths.Add(targetType, pathsOfType);
+            }
+            var path = new Path(currentPath);
+            pathsOfType.Add(path);
+            PopulatePaths(targetType, currentPath, paths, deriving);
+            List<IEClass> derived;
+            if (deriving.TryGetValue(targetType, out derived))
+            {
+                foreach (var subType in derived)
+                {
+                    AddPath(currentPath, paths, deriving, r, subType);
+                }
+            }
+        }
+
+        private static void GenerateEnumImpl(IEClass type, IEClass last, string target, List<IEClass> derived, Dictionary<IEClass, List<IEClass>> subTypes, StreamWriter sw)
         {
             sw.WriteLine($"impl {type.Name.ToPascalCase()} for {target} {{");
             GenerateFeatureImplementations(type, target, derived, sw);
+            if (last != null)
+            {
+                List<IEClass> subTypesOfType;
+                subTypes.TryGetValue(type, out subTypesOfType);
+                if (subTypesOfType != null)
+                {
+                    foreach (var subType in subTypesOfType)
+                    {
+                        var val = subType == last ? "Some(self)" : "None";
+                        sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}(&self) -> Option<&{subType.Name.ToPascalCase()}> {{ {val} }}");
+                        sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}_mut(&mut self) -> Option<&mut {subType.Name.ToPascalCase()}> {{ {val} }}");
+                    }
+                }
+            }
+            else
+            {
+                foreach (var subType in derived)
+                {
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}(&self) -> Option<&{subType.Name.ToPascalCase()}> {{");
+                    sw.WriteLine($"        match *self {{");
+                    foreach (var impl in derived)
+                    {
+                        var val = impl == subType ? "Some(self)" : "None";
+                        sw.WriteLine($"            {target}::{impl.Name.ToPascalCase()}(ref i) => {val},");
+                    }
+                    sw.WriteLine($"        }}");
+                    sw.WriteLine("    }");
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}_mut(&mut self) -> Option<&mut {subType.Name.ToPascalCase()}> {{");
+                    sw.WriteLine($"        match *self {{");
+                    foreach (var impl in derived)
+                    {
+                        var val = impl == subType ? "Some(self)" : "None";
+                        sw.WriteLine($"            {target}::{impl.Name.ToPascalCase()}(ref i) => {val},");
+                    }
+                    sw.WriteLine($"        }}");
+                    sw.WriteLine("    }");
+                }
+            }
             sw.WriteLine("}");
             foreach (var baseType in type.ESuperTypes)
             {
-                GenerateImpl(baseType, target, derived, sw);
+                GenerateEnumImpl(baseType, type, target, derived, subTypes, sw);
             }
         }
 
@@ -216,14 +356,25 @@ namespace CodeGenerator
             }
         }
 
-        private static void GenerateImpl(IEClass type, string target, StreamWriter sw)
+        private static void GenerateStructImpl(IEClass type, IEClass last, string target, Dictionary<IEClass, List<IEClass>> subTypes, StreamWriter sw)
         {
             sw.WriteLine($"impl {type.Name.ToPascalCase()} for {target} {{");
             GenerateFeatureImplementations(type, target, sw);
+            List<IEClass> derived;
+            subTypes.TryGetValue(type, out derived);
+            if (derived != null)
+            {
+                foreach (var subType in derived)
+                {
+                    var val = subType == last ? "Some(self)" : "None";
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}(&self) -> Option<&{subType.Name.ToPascalCase()}> {{ {val} }}");
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}_mut(&mut self) -> Option<&mut {subType.Name.ToPascalCase()}> {{ {val} }}");
+                }
+            }
             sw.WriteLine("}");
             foreach (var baseType in type.ESuperTypes)
             {
-                GenerateImpl(baseType, target, sw);
+                GenerateStructImpl(baseType, type, target, subTypes, sw);
             }
         }
 
@@ -318,7 +469,7 @@ namespace CodeGenerator
             }
         }
 
-        private static void GenerateTrait(IEClass type, StreamWriter sw)
+        private static void GenerateTrait(IEClass type, StreamWriter sw, List<IEClass> derived)
         {
             sw.Write($"pub trait {type.Name.ToPascalCase()} : ");
             foreach (var baseType in type.ESuperTypes)
@@ -327,6 +478,7 @@ namespace CodeGenerator
                 sw.Write(" + ");
             }
             sw.WriteLine("Debug {");
+            // features
             foreach (var feature in type.EStructuralFeatures)
             {
                 var r = feature as IEReference;
@@ -335,6 +487,15 @@ namespace CodeGenerator
                     continue;
                 }
                 GenerateFeatureTrait(feature, sw);
+            }
+            // casts
+            if (derived != null)
+            {
+                foreach (var subType in derived)
+                {
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}(&self) -> Option<&{subType.Name.ToPascalCase()}>;");
+                    sw.WriteLine($"    fn cast_{subType.Name.ToCamelCase()}_mut(&mut self) -> Option<&mut {subType.Name.ToPascalCase()}>;");
+                }
             }
             sw.WriteLine("}");
         }
@@ -389,9 +550,9 @@ namespace CodeGenerator
             throw new ArgumentOutOfRangeException();
         }
 
-        private static void GenerateParserState(IEnumerable<IEClass> classes, string prefix, StreamWriter sw)
+        private static void GenerateParserState(IEnumerable<IEClass> classes, string prefix, IEClass root, Dictionary<IEClass, List<Path>> paths, StreamWriter sw)
         {
-            sw.WriteLine(@"fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a String) -> &'a String {
+            sw.WriteLine(@"fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a str) -> &'a str {
 	for att in attributes {
 		match att.name.prefix {
 			Some(ref prefix) => {
@@ -406,14 +567,25 @@ namespace CodeGenerator
 }");
             sw.WriteLine("#[derive(Clone)]");
             sw.WriteLine("enum ParserState {");
+            sw.WriteLine("    Root,");
             foreach (var cl in classes)
             {
                 if (cl.Abstract.GetValueOrDefault(false)) continue;
                 sw.WriteLine($"    {cl.Name.ToPascalCase()}(Rc<Box<{cl.Name.ToPascalCase()}>>),");
             }
             sw.WriteLine("}");
+            sw.WriteLine("enum NeedResolve {");
+            foreach (var cl in classes)
+            {
+                foreach (var r in cl.EStructuralFeatures.OfType<IEReference>())
+                {
+                    if (r.Containment.GetValueOrDefault(false) || (r.EOpposite != null && r.EOpposite.Containment.GetValueOrDefault(false))) continue;
+                    sw.WriteLine($"    {cl.Name.ToPascalCase()}{r.Name.ToPascalCase()} {{ element : Rc<Box<{cl.Name.ToPascalCase()}>>, reference : String }},");
+                }
+            }
+            sw.WriteLine("}");
             sw.WriteLine("impl ParserState {");
-            sw.WriteLine("    fn push(reference : &String, stack : &mut Vec<ParserState>) {");
+            sw.WriteLine("    fn push(reference : &str, attributes : &Vec<OwnedAttribute>, stack : &mut Vec<ParserState>) {");
             foreach (var cl in classes)
             {
                 if (cl.Abstract.GetValueOrDefault(false)) continue;
@@ -433,6 +605,12 @@ namespace CodeGenerator
             sw.WriteLine("            }");
             sw.WriteLine("            XmlEvent::StartElement { name, attributes, namespace } => {");
             sw.WriteLine("                match *self {");
+            sw.WriteLine("                    ParserState::Root => {");
+            sw.WriteLine("                        let mut fullName : String = String::from(name.prefix.unwrap());");
+            sw.WriteLine("                        fullName.push(':');");
+            sw.WriteLine("                        fullName.push_str(&name.local_name);");
+            sw.WriteLine("                        ParserState::push(&fullName, &attributes, stack);");
+            sw.WriteLine("                    },");
             foreach (var cl in classes)
             {
                 if (cl.Abstract.GetValueOrDefault(false)) continue;
@@ -442,18 +620,93 @@ namespace CodeGenerator
                     if (r.Containment.GetValueOrDefault(false))
                     {
                         sw.WriteLine($"                        if name.local_name == \"{r.Name}\" {{");
-                        sw.WriteLine($"                            let r_name = String::from(\"{prefix}:{r.EType.Name.ToPascalCase()}\");");
-                        sw.WriteLine($"                            ParserState::push(find_type(&attributes, &r_name), stack);");
+                        sw.WriteLine($"                            let r_name = \"{prefix}:{r.EType.Name.ToPascalCase()}\";");
+                        sw.WriteLine($"                            ParserState::push(find_type(&attributes, r_name), &attributes, stack);");
                         sw.WriteLine("                            return;");
                         sw.WriteLine("                        }");
                     }
                 }
                 sw.WriteLine("                        panic!(\"Unexpected element found\");");
-                sw.WriteLine("                    }");
+                sw.WriteLine("                    },");
             }
             sw.WriteLine("                }");
             sw.WriteLine("            }");
             sw.WriteLine("            _ => {},");
+            sw.WriteLine("        }");
+            sw.WriteLine("    }");
+            sw.WriteLine("}");
+            sw.WriteLine("impl NeedResolve {");
+            sw.WriteLine($"    fn resolve(self, root : Rc<Box<{root.Name.ToPascalCase()}>>) {{");
+            sw.WriteLine("        match self {");
+            foreach (var cl in classes)
+            {
+                foreach (var r in cl.EStructuralFeatures.OfType<IEReference>())
+                {
+                    if (r.Containment.GetValueOrDefault(false) || (r.EOpposite != null && r.EOpposite.Containment.GetValueOrDefault(false))) continue;
+                    sw.WriteLine($"            NeedResolve::{cl.Name.ToPascalCase()}{r.Name.ToPascalCase()} {{ element : Rc<Box<{cl.Name.ToPascalCase()}>>, reference : String }} => {{");
+
+                    List<Path> allowedPaths;
+                    paths.TryGetValue((IEClass)r.EType, out allowedPaths);
+
+                    foreach (var path in allowedPaths)
+                    {
+                        sw.WriteLine("                lazy_static! {");
+                        sw.WriteLine($"                    static ref {path.ToString()}RE : Regex = Regex::new(\"{path.PrintRegex()}\").unwrap();");
+                        sw.WriteLine("                }");
+                        sw.WriteLine($"                if {path.ToString()}RE.is_match(reference) {{");
+                        sw.WriteLine($"                    let cap = {path.ToString()}RE.captures(reference).unwrap();");
+                        var index = 1;
+                        var last = "root";
+                        for (int i = 0; i < path.Segments.Count; i++)
+                        {
+                            var seg = path.Segments[i];
+                            var indexAndCast = "";
+                            if (seg.UpperBound.GetValueOrDefault(1) != 1)
+                            {
+                                indexAndCast = $"[cap[{index}].parse::<i32>.unwrap()]";
+                                index++;
+                            }
+                            IEClass next;
+                            if (i == path.Segments.Count - 1)
+                            {
+                                next = (IEClass)r.EType;
+                            }
+                            else
+                            {
+                                next = path.Segments[i + 1].EContainingClass;
+                            }
+                            if (next != seg.EType)
+                            {
+                                var stack = new Stack<IEClass>();
+                                stack.Push(next);
+                                while (stack.Peek() != seg.EType)
+                                {
+                                    stack.Push(stack.Peek().ESuperTypes[0]);
+                                }
+                                stack.Pop();
+                                while (stack.Count > 0)
+                                {
+                                    indexAndCast += $".cast_{stack.Pop().Name.ToCamelCase()}().unwrap()";
+                                }
+                            }
+                            sw.WriteLine($"                    let {seg.Name.ToCamelCase()} = {last}.get_{seg.Name}(){indexAndCast};");
+                            last = seg.Name.ToCamelCase();
+                        }
+                        if (r.UpperBound.GetValueOrDefault(1) == 1)
+                        {
+                            sw.WriteLine($"                    element.set_{r.Name}(Some({last}));");
+                        }
+                        else
+                        {
+                            sw.WriteLine($"                    element.get_{r.Name}().push({last});");
+                        }
+                        sw.WriteLine("                    return;");
+                        sw.WriteLine("                }");
+                    }
+
+                    sw.WriteLine("            },");
+                }
+            }
             sw.WriteLine("        }");
             sw.WriteLine("    }");
             sw.WriteLine("}");
@@ -463,14 +716,14 @@ namespace CodeGenerator
     let file = BufReader::new(file);
 
     let parser = EventReader::new(file);
-    let mut container = RailwayContainerImpl::default();
-    let mut state : ParserState;
+    let mut stack : Vec<ParserState> = Vec<ParserState>::new();
+    let mut resolves : Vec<NeedResolve> = Vec<NeedResolve>::new();
+    let root : ParserState = ParserState::Root;
+    stack.push(root);
+    let mut state : &ParserState = &stack[0];
     for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement { name, attributes, namespace }) => {
-            }
-            _ => {}
-        }
+        state.parse(e, &stack);
+        state = &stack[stack.len()-1];
     }
 }");
         }
