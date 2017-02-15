@@ -18,16 +18,27 @@ namespace CodeGenerator
 
             using (var sw = new StreamWriter(@"..\..\..\solution\src\railway.rs"))
             {
-                sw.WriteLine("use std::hash::Hash;");
-                sw.WriteLine("use std::marker::PhantomData;");
+                sw.WriteLine("use adapton::engine::*;");
                 sw.WriteLine();
+                sw.WriteLine("use std::hash::Hash;");
+                sw.WriteLine("use std::rc::Rc;");
+                sw.WriteLine("use std::fmt::Debug;");
+                sw.WriteLine("use std::fs::File;");
+                sw.WriteLine("use std::io::BufReader;");
+                sw.WriteLine("use std::ops::Deref;");
+                sw.WriteLine();
+                sw.WriteLine("use xml::reader::{ EventReader, XmlEvent};");
+                sw.WriteLine("use xml::name::OwnedName;");
+                sw.WriteLine("use xml::attribute::OwnedAttribute;");
+                sw.WriteLine();
+                sw.WriteLine("// generated enums");
                 foreach (var en in package.EClassifiers.OfType<IEEnum>())
                 {
                     GenerateEnum(en, sw);
                     sw.WriteLine();
                 }
 
-                // generate traits
+                sw.WriteLine("// generated traits");
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     GenerateTrait(type, sw);
@@ -44,7 +55,7 @@ namespace CodeGenerator
                     }
                 }
 
-                // generate structs
+                sw.WriteLine("// generated structs");
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     List<IEClass> derived;
@@ -59,7 +70,7 @@ namespace CodeGenerator
                     sw.WriteLine();
                 }
 
-                // generate implementations
+                sw.WriteLine("// generate implementations");
                 foreach (var type in package.EClassifiers.OfType<IEClass>())
                 {
                     List<IEClass> derived;
@@ -73,12 +84,15 @@ namespace CodeGenerator
                     }
                     sw.WriteLine();
                 }
+
+                sw.WriteLine("// generated parser");
+                GenerateParserState(package.EClassifiers.OfType<IEClass>(), package.NsPrefix, sw);
             }
         }
 
         private static void GenerateImpl(IEClass type, string target, List<IEClass> derived, StreamWriter sw)
         {
-            sw.WriteLine($"impl <'a> {type.Name.ToPascalCase()}<'a> for {target}<'a> {{");
+            sw.WriteLine($"impl {type.Name.ToPascalCase()} for {target} {{");
             GenerateFeatureImplementations(type, target, derived, sw);
             sw.WriteLine("}");
             foreach (var baseType in type.ESuperTypes)
@@ -89,13 +103,13 @@ namespace CodeGenerator
 
         private static void GenerateEnum(IEClass type, List<IEClass> derived, StreamWriter sw)
         {
-            sw.WriteLine("#[derive(Eq, PartialEq, Hash, Debug)]");
-            sw.WriteLine($"pub enum {GetImplementationName(type)}<'a> {{");
-            sw.Write($"    {derived[0].Name}({GetImplementationName(derived[0])}<'a>)");
+            sw.WriteLine("#[derive(Debug)]");
+            sw.WriteLine($"pub enum {GetImplementationName(type)} {{");
+            sw.Write($"    {derived[0].Name}({GetImplementationName(derived[0])})");
             foreach (var subType in derived.Skip(1))
             {
                 sw.WriteLine(",");
-                sw.Write($"    {subType.Name}({GetImplementationName(subType)}<'a>)");
+                sw.Write($"    {subType.Name}({GetImplementationName(subType)})");
             }
             sw.WriteLine();
             sw.WriteLine("}");
@@ -129,21 +143,15 @@ namespace CodeGenerator
 
         private static void GenerateStruct(IEClass type, StreamWriter sw)
         {
-            sw.WriteLine("#[derive(Eq, PartialEq, Hash, Debug, Default)]");
-            sw.WriteLine($"pub struct {GetImplementationName(type)}<'a> {{");
+            sw.WriteLine("#[derive(Debug, Default)]");
+            sw.WriteLine($"pub struct {GetImplementationName(type)} {{");
             var first = true;
-            var lifetime_needed = false;
-            GenerateFields(type, sw, false, ref first, ref lifetime_needed);
-            if (!lifetime_needed)
-            {
-                if (!first) sw.WriteLine(",");
-                sw.Write("    phantom: PhantomData<&'a String>");
-            }
+            GenerateFields(type, sw, false, ref first);
             sw.WriteLine();
             sw.WriteLine("}");
         }
 
-        private static void GenerateFields(IEClass type, StreamWriter sw, bool initialize, ref bool first, ref bool lifetime_needed)
+        private static void GenerateFields(IEClass type, StreamWriter sw, bool initialize, ref bool first)
         {
             foreach (var feature in type.EStructuralFeatures)
             {
@@ -160,10 +168,6 @@ namespace CodeGenerator
                 {
                     sw.WriteLine(",");
                 }
-                if (r != null)
-                {
-                    lifetime_needed = true;
-                }
                 sw.Write("    ");
                 if (initialize)
                 {
@@ -176,7 +180,7 @@ namespace CodeGenerator
             }
             foreach (var baseType in type.ESuperTypes)
             {
-                GenerateFields(baseType, sw, initialize, ref first, ref lifetime_needed);
+                GenerateFields(baseType, sw, initialize, ref first);
             }
         }
 
@@ -207,7 +211,7 @@ namespace CodeGenerator
 
         private static void GenerateImpl(IEClass type, string target, StreamWriter sw)
         {
-            sw.WriteLine($"impl <'a> {type.Name.ToPascalCase()}<'a> for {target}<'a> {{");
+            sw.WriteLine($"impl {type.Name.ToPascalCase()} for {target} {{");
             GenerateFeatureImplementations(type, target, sw);
             sw.WriteLine("}");
             foreach (var baseType in type.ESuperTypes)
@@ -234,12 +238,12 @@ namespace CodeGenerator
             var r = feature as IEReference;
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> {GetTypeName(feature, mutable: false)} {{");
                 if (r != null)
                 {
                     sw.WriteLine($"        match self.{feature.Name} {{");
                     sw.WriteLine("            None => None,");
-                    sw.WriteLine("            Some(ref val) => Some(val),");
+                    sw.WriteLine("            Some(ref val) => Some(val.clone()),");
                     sw.WriteLine("        }");
                 }
                 else
@@ -247,13 +251,13 @@ namespace CodeGenerator
                     sw.WriteLine($"        self.{feature.Name}.clone()");
                 }
                 sw.WriteLine("    }");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)}) {{");
+                sw.WriteLine($"    fn set_{feature.Name}(&mut self, value: {GetTypeName(feature)}) {{");
                 sw.WriteLine($"        self.{feature.Name} = value");
                 sw.WriteLine("    }");
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&mut self) -> &mut {GetTypeName(feature)} {{");
                 sw.WriteLine($"        &mut self.{feature.Name}");
                 sw.WriteLine("    }");
             }
@@ -277,7 +281,7 @@ namespace CodeGenerator
             var r = feature as IEReference;
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> {GetTypeName(feature, mutable: false)} {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -285,7 +289,7 @@ namespace CodeGenerator
                 }
                 sw.WriteLine($"        }}");
                 sw.WriteLine("    }");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)}) {{");
+                sw.WriteLine($"    fn set_{feature.Name}(&mut self, value: {GetTypeName(feature)}) {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -296,7 +300,7 @@ namespace CodeGenerator
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &mut {GetTypeName(feature)} {{");
+                sw.WriteLine($"    fn get_{feature.Name}(&mut self) -> &mut {GetTypeName(feature)} {{");
                 sw.WriteLine($"        match *self {{");
                 foreach (var impl in derived)
                 {
@@ -309,13 +313,13 @@ namespace CodeGenerator
 
         private static void GenerateTrait(IEClass type, StreamWriter sw)
         {
-            sw.Write($"pub trait {type.Name.ToPascalCase()}<'a> : ");
+            sw.Write($"pub trait {type.Name.ToPascalCase()} : ");
             foreach (var baseType in type.ESuperTypes)
             {
-                sw.Write(baseType.Name.ToPascalCase() + "<'a>");
+                sw.Write(baseType.Name.ToPascalCase());
                 sw.Write(" + ");
             }
-            sw.WriteLine("Eq + PartialEq + Hash {");
+            sw.WriteLine("Debug {");
             foreach (var feature in type.EStructuralFeatures)
             {
                 var r = feature as IEReference;
@@ -332,12 +336,12 @@ namespace CodeGenerator
         {
             if (feature.UpperBound.GetValueOrDefault(1) == 1)
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a self) -> {GetTypeName(feature, mutable: false)};");
-                sw.WriteLine($"    fn set_{feature.Name}(&'a mut self, value: {GetTypeName(feature)});");
+                sw.WriteLine($"    fn get_{feature.Name}(&self) -> {GetTypeName(feature, mutable: false)};");
+                sw.WriteLine($"    fn set_{feature.Name}(&mut self, value: {GetTypeName(feature)});");
             }
             else
             {
-                sw.WriteLine($"    fn get_{feature.Name}(&'a mut self) -> &'a mut {GetTypeName(feature)};");
+                sw.WriteLine($"    fn get_{feature.Name}(&mut self) -> &mut {GetTypeName(feature)};");
             }
         }
 
@@ -345,9 +349,6 @@ namespace CodeGenerator
         {
             var dataType = feature.EType as EDataType;
             var boxType = feature.UpperBound.GetValueOrDefault(1) != 1 ? "Vec" : "Option";
-            var lifetimeSpec = "'a";
-            if (mutable) lifetimeSpec += " mut";
-            var lifetimePost = lifetime ? "<'a>" : "";
             if (dataType != null)
             {
                 switch (dataType.InstanceClassName)
@@ -366,11 +367,11 @@ namespace CodeGenerator
                 var r = feature as IEReference;
                 if (r != null && r.Containment.GetValueOrDefault(false))
                 {
-                    return $"{boxType}<{GetImplementationName(cls)}<'a>>";
+                    return $"{boxType}<Rc<Box<{cls.Name.ToPascalCase()}>>>";
                 }
                 else
                 {
-                    return $"{boxType}<&{lifetimeSpec} {GetImplementationName(cls)}<'a>>";
+                    return $"{boxType}<Rc<Box<{cls.Name.ToPascalCase()}>>>";
                 }
             }
             var en = feature.EType as IEEnum;
@@ -379,6 +380,92 @@ namespace CodeGenerator
                 return $"{boxType}<{en.Name.ToPascalCase()}>";
             }
             throw new ArgumentOutOfRangeException();
+        }
+
+        private static void GenerateParserState(IEnumerable<IEClass> classes, string prefix, StreamWriter sw)
+        {
+            sw.WriteLine(@"fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a String) -> &'a String {
+	for att in attributes {
+		match att.name.prefix {
+			Some(ref prefix) => {
+				if prefix == ""xsi"" && att.name.local_name == ""type"" {
+                    return &att.value
+                }
+            },
+			None => continue
+		}
+	}
+	return default;
+}");
+            sw.WriteLine("#[derive(Clone)]");
+            sw.WriteLine("enum ParserState {");
+            foreach (var cl in classes)
+            {
+                if (cl.Abstract.GetValueOrDefault(false)) continue;
+                sw.WriteLine($"    {cl.Name.ToPascalCase()}(Rc<Box<{cl.Name.ToPascalCase()}>>),");
+            }
+            sw.WriteLine("}");
+            sw.WriteLine("impl ParserState {");
+            sw.WriteLine("    fn push(reference : &String, stack : &mut Vec<ParserState>) {");
+            foreach (var cl in classes)
+            {
+                if (cl.Abstract.GetValueOrDefault(false)) continue;
+                sw.WriteLine($"        if reference == \"{prefix}:{cl.Name.ToPascalCase()}\" {{");
+                sw.WriteLine($"            let element : Rc<Box<{cl.Name.ToPascalCase()}>> = Rc::new(Box::new({cl.Name.ToPascalCase()}Impl::default()));");
+                sw.WriteLine($"            stack.push(ParserState::{cl.Name.ToPascalCase()}(element));");
+                sw.WriteLine("        }");
+            }
+            sw.WriteLine("    }");
+            sw.WriteLine("    fn parse(&self, event : XmlEvent, stack : &mut Vec<ParserState>)");
+            sw.WriteLine("    {");
+            sw.WriteLine("        match event {");
+            sw.WriteLine("            XmlEvent::EndElement { name } => {");
+            sw.WriteLine("                if stack.len() > 1 {");
+            sw.WriteLine("                    stack.pop();");
+            sw.WriteLine("                }");
+            sw.WriteLine("            }");
+            sw.WriteLine("            XmlEvent::StartElement { name, attributes, namespace } => {");
+            sw.WriteLine("                match *self {");
+            foreach (var cl in classes)
+            {
+                if (cl.Abstract.GetValueOrDefault(false)) continue;
+                sw.WriteLine($"                    ParserState::{cl.Name.ToPascalCase()}(ref element) => {{");
+                foreach (var r in cl.EStructuralFeatures.OfType<IEReference>())
+                {
+                    if (r.Containment.GetValueOrDefault(false))
+                    {
+                        sw.WriteLine($"                        if name.local_name == \"{r.Name}\" {{");
+                        sw.WriteLine($"                            let r_name = String::from(\"{prefix}:{r.EType.Name.ToPascalCase()}\");");
+                        sw.WriteLine($"                            ParserState::push(find_type(&attributes, &r_name), stack);");
+                        sw.WriteLine("                            return;");
+                        sw.WriteLine("                        }");
+                    }
+                }
+                sw.WriteLine("                        panic!(\"Unexpected element found\");");
+                sw.WriteLine("                    }");
+            }
+            sw.WriteLine("                }");
+            sw.WriteLine("            }");
+            sw.WriteLine("            _ => {},");
+            sw.WriteLine("        }");
+            sw.WriteLine("    }");
+            sw.WriteLine("}");
+
+            sw.WriteLine(@"pub fn load(file_name :String) {
+    let file = File::open(file_name).unwrap();
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut container = RailwayContainerImpl::default();
+    let mut state : ParserState;
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, attributes, namespace }) => {
+            }
+            _ => {}
+        }
+    }
+}");
         }
     }
 }

@@ -1,6 +1,17 @@
-use std::hash::Hash;
-use std::marker::PhantomData;
+use adapton::engine::*;
 
+use std::hash::Hash;
+use std::rc::Rc;
+use std::fmt::Debug;
+use std::fs::File;
+use std::io::BufReader;
+use std::ops::Deref;
+
+use xml::reader::{ EventReader, XmlEvent};
+use xml::name::OwnedName;
+use xml::attribute::OwnedAttribute;
+
+// generated enums
 #[derive(Eq, PartialEq, Clone, Copy, Hash, Debug)]
 pub enum Signal {
     FAILURE,
@@ -16,161 +27,163 @@ pub enum Position {
     STRAIGHT
 }
 
-pub trait Segment<'a> : TrackElement<'a> + Eq + PartialEq + Hash {
-    fn get_length(&'a self) -> Option<i32>;
-    fn set_length(&'a mut self, value: Option<i32>);
+// generated traits
+pub trait Segment : TrackElement + Debug {
+    fn get_length(&self) -> Option<i32>;
+    fn set_length(&mut self, value: Option<i32>);
 }
 
-pub trait TrackElement<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_connectsTo(&'a mut self) -> &'a mut Vec<&'a mut TrackElementImpl<'a>>;
+pub trait TrackElement : RailwayElement + Debug {
+    fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>>;
 }
 
-pub trait Switch<'a> : TrackElement<'a> + Eq + PartialEq + Hash {
-    fn get_currentPosition(&'a self) -> Option<Position>;
-    fn set_currentPosition(&'a mut self, value: Option<Position>);
-    fn get_positions(&'a mut self) -> &'a mut Vec<&'a mut SwitchPositionImpl<'a>>;
+pub trait Switch : TrackElement + Debug {
+    fn get_currentPosition(&self) -> Option<Position>;
+    fn set_currentPosition(&mut self, value: Option<Position>);
+    fn get_positions(&mut self) -> &mut Vec<Rc<Box<SwitchPosition>>>;
 }
 
-pub trait Route<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_entry(&'a self) -> Option<&'a SemaphoreImpl<'a>>;
-    fn set_entry(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>);
-    fn get_follows(&'a mut self) -> &'a mut Vec<SwitchPositionImpl<'a>>;
-    fn get_exit(&'a self) -> Option<&'a SemaphoreImpl<'a>>;
-    fn set_exit(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>);
-    fn get_definedBy(&'a mut self) -> &'a mut Vec<SensorImpl<'a>>;
+pub trait Route : RailwayElement + Debug {
+    fn get_entry(&self) -> Option<Rc<Box<Semaphore>>>;
+    fn set_entry(&mut self, value: Option<Rc<Box<Semaphore>>>);
+    fn get_follows(&mut self) -> &mut Vec<Rc<Box<SwitchPosition>>>;
+    fn get_exit(&self) -> Option<Rc<Box<Semaphore>>>;
+    fn set_exit(&mut self, value: Option<Rc<Box<Semaphore>>>);
+    fn get_definedBy(&mut self) -> &mut Vec<Rc<Box<Sensor>>>;
 }
 
-pub trait Semaphore<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_signal(&'a self) -> Option<Signal>;
-    fn set_signal(&'a mut self, value: Option<Signal>);
+pub trait Semaphore : RailwayElement + Debug {
+    fn get_signal(&self) -> Option<Signal>;
+    fn set_signal(&mut self, value: Option<Signal>);
 }
 
-pub trait SwitchPosition<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_switch(&'a self) -> Option<&'a SwitchImpl<'a>>;
-    fn set_switch(&'a mut self, value: Option<&'a mut SwitchImpl<'a>>);
-    fn get_position(&'a self) -> Option<Position>;
-    fn set_position(&'a mut self, value: Option<Position>);
+pub trait SwitchPosition : RailwayElement + Debug {
+    fn get_switch(&self) -> Option<Rc<Box<Switch>>>;
+    fn set_switch(&mut self, value: Option<Rc<Box<Switch>>>);
+    fn get_position(&self) -> Option<Position>;
+    fn set_position(&mut self, value: Option<Position>);
 }
 
-pub trait RailwayElement<'a> : Eq + PartialEq + Hash {
-    fn get_id(&'a self) -> Option<i32>;
-    fn set_id(&'a mut self, value: Option<i32>);
+pub trait RailwayElement : Debug {
+    fn get_id(&self) -> Option<i32>;
+    fn set_id(&mut self, value: Option<i32>);
 }
 
-pub trait Sensor<'a> : RailwayElement<'a> + Eq + PartialEq + Hash {
-    fn get_elements(&'a mut self) -> &'a mut Vec<TrackElementImpl<'a>>;
+pub trait Sensor : RailwayElement + Debug {
+    fn get_elements(&mut self) -> &mut Vec<Rc<Box<TrackElement>>>;
 }
 
-pub trait RailwayContainer<'a> : Eq + PartialEq + Hash {
-    fn get_invalids(&'a mut self) -> &'a mut Vec<RailwayElementImpl<'a>>;
-    fn get_semaphores(&'a mut self) -> &'a mut Vec<SemaphoreImpl<'a>>;
-    fn get_routes(&'a mut self) -> &'a mut Vec<RouteImpl<'a>>;
+pub trait RailwayContainer : Debug {
+    fn get_invalids(&mut self) -> &mut Vec<Rc<Box<RailwayElement>>>;
+    fn get_semaphores(&mut self) -> &mut Vec<Rc<Box<Semaphore>>>;
+    fn get_routes(&mut self) -> &mut Vec<Rc<Box<Route>>>;
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct SegmentImpl<'a> {
+// generated structs
+#[derive(Debug, Default)]
+pub struct SegmentImpl {
     length: Option<i32>,
-    connectsTo: Vec<&'a mut TrackElementImpl<'a>>,
+    connectsTo: Vec<Rc<Box<TrackElement>>>,
     id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug)]
-pub enum TrackElementImpl<'a> {
-    Segment(SegmentImpl<'a>),
-    Switch(SwitchImpl<'a>)
+#[derive(Debug)]
+pub enum TrackElementImpl {
+    Segment(SegmentImpl),
+    Switch(SwitchImpl)
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct SwitchImpl<'a> {
+#[derive(Debug, Default)]
+pub struct SwitchImpl {
     currentPosition: Option<Position>,
-    positions: Vec<&'a mut SwitchPositionImpl<'a>>,
-    connectsTo: Vec<&'a mut TrackElementImpl<'a>>,
+    positions: Vec<Rc<Box<SwitchPosition>>>,
+    connectsTo: Vec<Rc<Box<TrackElement>>>,
     id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct RouteImpl<'a> {
-    entry: Option<&'a mut SemaphoreImpl<'a>>,
-    follows: Vec<SwitchPositionImpl<'a>>,
-    exit: Option<&'a mut SemaphoreImpl<'a>>,
-    definedBy: Vec<SensorImpl<'a>>,
+#[derive(Debug, Default)]
+pub struct RouteImpl {
+    entry: Option<Rc<Box<Semaphore>>>,
+    follows: Vec<Rc<Box<SwitchPosition>>>,
+    exit: Option<Rc<Box<Semaphore>>>,
+    definedBy: Vec<Rc<Box<Sensor>>>,
     id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct SemaphoreImpl<'a> {
+#[derive(Debug, Default)]
+pub struct SemaphoreImpl {
     signal: Option<Signal>,
-    id: Option<i32>,
-    phantom: PhantomData<&'a String>
+    id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct SwitchPositionImpl<'a> {
-    switch: Option<&'a mut SwitchImpl<'a>>,
+#[derive(Debug, Default)]
+pub struct SwitchPositionImpl {
+    switch: Option<Rc<Box<Switch>>>,
     position: Option<Position>,
     id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug)]
-pub enum RailwayElementImpl<'a> {
-    TrackElement(TrackElementImpl<'a>),
-    Route(RouteImpl<'a>),
-    Semaphore(SemaphoreImpl<'a>),
-    SwitchPosition(SwitchPositionImpl<'a>),
-    Sensor(SensorImpl<'a>)
+#[derive(Debug)]
+pub enum RailwayElementImpl {
+    TrackElement(TrackElementImpl),
+    Route(RouteImpl),
+    Semaphore(SemaphoreImpl),
+    SwitchPosition(SwitchPositionImpl),
+    Sensor(SensorImpl)
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct SensorImpl<'a> {
-    elements: Vec<TrackElementImpl<'a>>,
+#[derive(Debug, Default)]
+pub struct SensorImpl {
+    elements: Vec<Rc<Box<TrackElement>>>,
     id: Option<i32>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
-pub struct RailwayContainerImpl<'a> {
-    invalids: Vec<RailwayElementImpl<'a>>,
-    semaphores: Vec<SemaphoreImpl<'a>>,
-    routes: Vec<RouteImpl<'a>>
+#[derive(Debug, Default)]
+pub struct RailwayContainerImpl {
+    invalids: Vec<Rc<Box<RailwayElement>>>,
+    semaphores: Vec<Rc<Box<Semaphore>>>,
+    routes: Vec<Rc<Box<Route>>>
 }
 
-impl <'a> Segment<'a> for SegmentImpl<'a> {
-    fn get_length(&'a self) -> Option<i32> {
+// generate implementations
+impl Segment for SegmentImpl {
+    fn get_length(&self) -> Option<i32> {
         self.length.clone()
     }
-    fn set_length(&'a mut self, value: Option<i32>) {
+    fn set_length(&mut self, value: Option<i32>) {
         self.length = value
     }
 }
-impl <'a> TrackElement<'a> for SegmentImpl<'a> {
-    fn get_connectsTo(&'a mut self) -> &mut Vec<&'a mut TrackElementImpl<'a>> {
+impl TrackElement for SegmentImpl {
+    fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         &mut self.connectsTo
     }
 }
-impl <'a> RailwayElement<'a> for SegmentImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for SegmentImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> TrackElement<'a> for TrackElementImpl<'a> {
-    fn get_connectsTo(&'a mut self) -> &mut Vec<&'a mut TrackElementImpl<'a>> {
+impl TrackElement for TrackElementImpl {
+    fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         match *self {
             TrackElementImpl::Segment(ref mut i) => i.get_connectsTo(),
             TrackElementImpl::Switch(ref mut i) => i.get_connectsTo(),
         }
     }
 }
-impl <'a> RailwayElement<'a> for TrackElementImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for TrackElementImpl {
+    fn get_id(&self) -> Option<i32> {
         match *self {
             TrackElementImpl::Segment(ref i) => i.get_id(),
             TrackElementImpl::Switch(ref i) => i.get_id(),
         }
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         match *self {
             TrackElementImpl::Segment(ref mut i) => i.set_id(value),
             TrackElementImpl::Switch(ref mut i) => i.set_id(value),
@@ -178,111 +191,111 @@ impl <'a> RailwayElement<'a> for TrackElementImpl<'a> {
     }
 }
 
-impl <'a> Switch<'a> for SwitchImpl<'a> {
-    fn get_currentPosition(&'a self) -> Option<Position> {
+impl Switch for SwitchImpl {
+    fn get_currentPosition(&self) -> Option<Position> {
         self.currentPosition.clone()
     }
-    fn set_currentPosition(&'a mut self, value: Option<Position>) {
+    fn set_currentPosition(&mut self, value: Option<Position>) {
         self.currentPosition = value
     }
-    fn get_positions(&'a mut self) -> &mut Vec<&'a mut SwitchPositionImpl<'a>> {
+    fn get_positions(&mut self) -> &mut Vec<Rc<Box<SwitchPosition>>> {
         &mut self.positions
     }
 }
-impl <'a> TrackElement<'a> for SwitchImpl<'a> {
-    fn get_connectsTo(&'a mut self) -> &mut Vec<&'a mut TrackElementImpl<'a>> {
+impl TrackElement for SwitchImpl {
+    fn get_connectsTo(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         &mut self.connectsTo
     }
 }
-impl <'a> RailwayElement<'a> for SwitchImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for SwitchImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> Route<'a> for RouteImpl<'a> {
-    fn get_entry(&'a self) -> Option<&'a SemaphoreImpl<'a>> {
+impl Route for RouteImpl {
+    fn get_entry(&self) -> Option<Rc<Box<Semaphore>>> {
         match self.entry {
             None => None,
-            Some(ref val) => Some(val),
+            Some(ref val) => Some(val.clone()),
         }
     }
-    fn set_entry(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>) {
+    fn set_entry(&mut self, value: Option<Rc<Box<Semaphore>>>) {
         self.entry = value
     }
-    fn get_follows(&'a mut self) -> &mut Vec<SwitchPositionImpl<'a>> {
+    fn get_follows(&mut self) -> &mut Vec<Rc<Box<SwitchPosition>>> {
         &mut self.follows
     }
-    fn get_exit(&'a self) -> Option<&'a SemaphoreImpl<'a>> {
+    fn get_exit(&self) -> Option<Rc<Box<Semaphore>>> {
         match self.exit {
             None => None,
-            Some(ref val) => Some(val),
+            Some(ref val) => Some(val.clone()),
         }
     }
-    fn set_exit(&'a mut self, value: Option<&'a mut SemaphoreImpl<'a>>) {
+    fn set_exit(&mut self, value: Option<Rc<Box<Semaphore>>>) {
         self.exit = value
     }
-    fn get_definedBy(&'a mut self) -> &mut Vec<SensorImpl<'a>> {
+    fn get_definedBy(&mut self) -> &mut Vec<Rc<Box<Sensor>>> {
         &mut self.definedBy
     }
 }
-impl <'a> RailwayElement<'a> for RouteImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for RouteImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> Semaphore<'a> for SemaphoreImpl<'a> {
-    fn get_signal(&'a self) -> Option<Signal> {
+impl Semaphore for SemaphoreImpl {
+    fn get_signal(&self) -> Option<Signal> {
         self.signal.clone()
     }
-    fn set_signal(&'a mut self, value: Option<Signal>) {
+    fn set_signal(&mut self, value: Option<Signal>) {
         self.signal = value
     }
 }
-impl <'a> RailwayElement<'a> for SemaphoreImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for SemaphoreImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> SwitchPosition<'a> for SwitchPositionImpl<'a> {
-    fn get_switch(&'a self) -> Option<&'a SwitchImpl<'a>> {
+impl SwitchPosition for SwitchPositionImpl {
+    fn get_switch(&self) -> Option<Rc<Box<Switch>>> {
         match self.switch {
             None => None,
-            Some(ref val) => Some(val),
+            Some(ref val) => Some(val.clone()),
         }
     }
-    fn set_switch(&'a mut self, value: Option<&'a mut SwitchImpl<'a>>) {
+    fn set_switch(&mut self, value: Option<Rc<Box<Switch>>>) {
         self.switch = value
     }
-    fn get_position(&'a self) -> Option<Position> {
+    fn get_position(&self) -> Option<Position> {
         self.position.clone()
     }
-    fn set_position(&'a mut self, value: Option<Position>) {
+    fn set_position(&mut self, value: Option<Position>) {
         self.position = value
     }
 }
-impl <'a> RailwayElement<'a> for SwitchPositionImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for SwitchPositionImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> RailwayElement<'a> for RailwayElementImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for RailwayElementImpl {
+    fn get_id(&self) -> Option<i32> {
         match *self {
             RailwayElementImpl::TrackElement(ref i) => i.get_id(),
             RailwayElementImpl::Route(ref i) => i.get_id(),
@@ -291,7 +304,7 @@ impl <'a> RailwayElement<'a> for RailwayElementImpl<'a> {
             RailwayElementImpl::Sensor(ref i) => i.get_id(),
         }
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         match *self {
             RailwayElementImpl::TrackElement(ref mut i) => i.set_id(value),
             RailwayElementImpl::Route(ref mut i) => i.set_id(value),
@@ -302,29 +315,166 @@ impl <'a> RailwayElement<'a> for RailwayElementImpl<'a> {
     }
 }
 
-impl <'a> Sensor<'a> for SensorImpl<'a> {
-    fn get_elements(&'a mut self) -> &mut Vec<TrackElementImpl<'a>> {
+impl Sensor for SensorImpl {
+    fn get_elements(&mut self) -> &mut Vec<Rc<Box<TrackElement>>> {
         &mut self.elements
     }
 }
-impl <'a> RailwayElement<'a> for SensorImpl<'a> {
-    fn get_id(&'a self) -> Option<i32> {
+impl RailwayElement for SensorImpl {
+    fn get_id(&self) -> Option<i32> {
         self.id.clone()
     }
-    fn set_id(&'a mut self, value: Option<i32>) {
+    fn set_id(&mut self, value: Option<i32>) {
         self.id = value
     }
 }
 
-impl <'a> RailwayContainer<'a> for RailwayContainerImpl<'a> {
-    fn get_invalids(&'a mut self) -> &mut Vec<RailwayElementImpl<'a>> {
+impl RailwayContainer for RailwayContainerImpl {
+    fn get_invalids(&mut self) -> &mut Vec<Rc<Box<RailwayElement>>> {
         &mut self.invalids
     }
-    fn get_semaphores(&'a mut self) -> &mut Vec<SemaphoreImpl<'a>> {
+    fn get_semaphores(&mut self) -> &mut Vec<Rc<Box<Semaphore>>> {
         &mut self.semaphores
     }
-    fn get_routes(&'a mut self) -> &mut Vec<RouteImpl<'a>> {
+    fn get_routes(&mut self) -> &mut Vec<Rc<Box<Route>>> {
         &mut self.routes
     }
 }
 
+// generated parser
+fn find_type<'a>(attributes : &'a Vec<OwnedAttribute>, default : &'a String) -> &'a String {
+	for att in attributes {
+		match att.name.prefix {
+			Some(ref prefix) => {
+				if prefix == "xsi" && att.name.local_name == "type" {
+                    return &att.value
+                }
+            },
+			None => continue
+		}
+	}
+	return default;
+}
+#[derive(Clone)]
+enum ParserState {
+    Segment(Rc<Box<Segment>>),
+    Switch(Rc<Box<Switch>>),
+    Route(Rc<Box<Route>>),
+    Semaphore(Rc<Box<Semaphore>>),
+    SwitchPosition(Rc<Box<SwitchPosition>>),
+    Sensor(Rc<Box<Sensor>>),
+    RailwayContainer(Rc<Box<RailwayContainer>>),
+}
+impl ParserState {
+    fn push(reference : &String, stack : &mut Vec<ParserState>) {
+        if reference == "hu.bme.mit.trainbenchmark:Segment" {
+            let element : Rc<Box<Segment>> = Rc::new(Box::new(SegmentImpl::default()));
+            stack.push(ParserState::Segment(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:Switch" {
+            let element : Rc<Box<Switch>> = Rc::new(Box::new(SwitchImpl::default()));
+            stack.push(ParserState::Switch(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:Route" {
+            let element : Rc<Box<Route>> = Rc::new(Box::new(RouteImpl::default()));
+            stack.push(ParserState::Route(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:Semaphore" {
+            let element : Rc<Box<Semaphore>> = Rc::new(Box::new(SemaphoreImpl::default()));
+            stack.push(ParserState::Semaphore(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:SwitchPosition" {
+            let element : Rc<Box<SwitchPosition>> = Rc::new(Box::new(SwitchPositionImpl::default()));
+            stack.push(ParserState::SwitchPosition(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:Sensor" {
+            let element : Rc<Box<Sensor>> = Rc::new(Box::new(SensorImpl::default()));
+            stack.push(ParserState::Sensor(element));
+        }
+        if reference == "hu.bme.mit.trainbenchmark:RailwayContainer" {
+            let element : Rc<Box<RailwayContainer>> = Rc::new(Box::new(RailwayContainerImpl::default()));
+            stack.push(ParserState::RailwayContainer(element));
+        }
+    }
+    fn parse(&self, event : XmlEvent, stack : &mut Vec<ParserState>)
+    {
+        match event {
+            XmlEvent::EndElement { name } => {
+                if stack.len() > 1 {
+                    stack.pop();
+                }
+            }
+            XmlEvent::StartElement { name, attributes, namespace } => {
+                match *self {
+                    ParserState::Segment(ref element) => {
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::Switch(ref element) => {
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::Route(ref element) => {
+                        if name.local_name == "follows" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:SwitchPosition");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        if name.local_name == "definedBy" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:Sensor");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::Semaphore(ref element) => {
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::SwitchPosition(ref element) => {
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::Sensor(ref element) => {
+                        if name.local_name == "elements" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:TrackElement");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        panic!("Unexpected element found");
+                    }
+                    ParserState::RailwayContainer(ref element) => {
+                        if name.local_name == "invalids" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:RailwayElement");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        if name.local_name == "semaphores" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:Semaphore");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        if name.local_name == "routes" {
+                            let r_name = String::from("hu.bme.mit.trainbenchmark:Route");
+                            ParserState::push(find_type(&attributes, &r_name), stack);
+                            return;
+                        }
+                        panic!("Unexpected element found");
+                    }
+                }
+            }
+            _ => {},
+        }
+    }
+}
+pub fn load(file_name :String) {
+    let file = File::open(file_name).unwrap();
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut container = RailwayContainerImpl::default();
+    let mut state : ParserState;
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, attributes, namespace }) => {
+            }
+            _ => {}
+        }
+    }
+}
