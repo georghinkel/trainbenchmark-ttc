@@ -48,29 +48,29 @@ def get_generator_jar():
     Returns the generator's .jar file's path which belongs to the certain
     format.
     """
-    folder = "../hu.bme.mit.trainbenchmark.ttc.generator/target/"
+    folder = "..\\hu.bme.mit.trainbenchmark.ttc.generator\\target\\"
     files = glob.glob(folder + "*.jar")
-    for file in files:
-        if not "source" in file:
-            return file
-    # raise error if file not found
-    msg = "JAR file does not exist for generator."
-    logging.error(msg)
-    raise FileNotFoundError(msg)
+    if len(files) > 0:
+        target = files[0]
+        return target
+    else:
+        msg = "JAR file does not exist of generator."
+        logging.error(msg)
+        raise FileNotFoundError(msg)
 
 
 def get_tool_jar(tool):
     """
     Returns the tool's .jar file's path.
     """
-    folder = "../{TOOL}/target/".format(TOOL=tool)
+    folder = "..\\{TOOL}\\target\\".format(TOOL=tool)
     files = glob.glob(folder + "*.jar")
-    for file in files:
-        if not "source" in file:
-            return file
-    # raise error if file not found
-    logging.error("JAR file does not exist for " + tool)
-    raise FileNotFoundError("JAR file does not exist for " + tool)
+    if len(files) > 0:
+        target = files[0]
+        return target
+    else:
+        logging.error("JAR file does not exist of " + tool)
+        raise FileNotFoundError("JAR file does not exist of " + tool)
 
 
 def get_power_of_two(minsize, maxsize):

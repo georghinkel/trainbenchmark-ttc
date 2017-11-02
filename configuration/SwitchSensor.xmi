@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<conf:Configuration xmi:version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xmi="http://www.omg.org/XMI" xmlns:conf="http://nmf.codeplex.com/incrementalizationConfig">
+  <methodConfigurations methodIdentifier="(sw.Sensor == null)" strategy="ArgumentPromotion" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+</conf:Configuration>

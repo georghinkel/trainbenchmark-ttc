@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<conf:Configuration xmi:version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xmi="http://www.omg.org/XMI" xmlns:conf="http://nmf.codeplex.com/incrementalizationConfig">
+  <methodConfigurations methodIdentifier="((route.Entry != null) AndAlso (Convert(route.Entry.Signal) == 2))" strategy="ArgumentPromotion" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+  <methodConfigurations methodIdentifier="route.Follows.OfType()" strategy="UseAugmentation" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+  <methodConfigurations methodIdentifier="new &lt;&gt;f__AnonymousType9`2(route = route, swP = swP)" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+  <methodConfigurations methodIdentifier="(Convert(&lt;&gt;h__TransparentIdentifier0.swP.Switch.CurrentPosition) != Convert(&lt;&gt;h__TransparentIdentifier0.swP.Position))" strategy="ArgumentPromotion" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+  <methodConfigurations methodIdentifier="&lt;&gt;h__TransparentIdentifier0.swP" allowedStrategies="InstructionLevel ListenRepositoryChanges ArgumentPromotion UseAugmentation" />
+</conf:Configuration>

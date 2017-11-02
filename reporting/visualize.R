@@ -8,7 +8,7 @@ source("constants.R")
 args <- commandArgs(trailingOnly = TRUE)
 configPath <- args[1]
 
-results <-read.csv(resultsPath, header=TRUE, sep='\t')
+results <-subset(read.csv(resultsPath, header=TRUE, sep='\t'))
 
 config <- fromJSON(configPath)
 
@@ -37,7 +37,7 @@ for(row in 1:nrow(config$Summarize_Functions)){
         subData2 <- subset(subData1, Tool==tool)
         
         if (config$Dimensions$X_Dimensions$Size){
-          title <- paste(tool, ", ", scenario, ", Function: ", concatPhases(phases), " (Y: Log2) (X: Log2)", sep='')
+          title <- paste(tool, ", ", scenario, ", Function: ", concatPhases(phases), sep='')
          
           settings <- setTitle(settings, title)
           settings <- setDimensions(settings, "Size", "MetricValue")
@@ -47,14 +47,14 @@ for(row in 1:nrow(config$Summarize_Functions)){
             fileName <- paste(rootPath, scenario, "-", tool, "-GroupBy-Query-", metric, "-", name, ".",  extension, sep='')
             savePlot(subData2, settings, phases, fileName)
           }
+          write.csv(subData2, file = paste(rootPath, scenario, "-", tool, "-GroupBy-Query-", metric, "-", name, ".csv", sep=''))
         }
         
         if (config$Dimensions$X_Dimensions$Iteration){
           uniqueSizes <-unique(subData2$Size)
           for(size in uniqueSizes){
             subData3 <- subset(subData2, Size==size)
-            title <- paste(scenario, ", ", tool, ", Size: ", size, ", Function: ", concatPhases(phases), 
-                           " (Y: Log2) (X: Continuous)", sep='')
+            title <- paste(tool, ", Size: ", size, ", Function: ", concatPhases(phases), sep='')
            
             settings <- setTitle(settings, title)
             settings <- setDimensions(settings, "Iteration", "MetricValue")
@@ -64,6 +64,7 @@ for(row in 1:nrow(config$Summarize_Functions)){
               fileName <- paste(rootPath, scenario, "-", tool, "-Size-", size, "-GroupBy-Query-", metric, "-", name, ".", extension, sep='')
               savePlot(subData3, settings, phases, fileName)
             }
+            write.csv(subData3, file = paste(rootPath, scenario, "-", tool, "-Size-", size, "-GroupBy-Query-", metric, "-", name, ".csv", sep=''))
           }
         } 
       }
@@ -76,7 +77,7 @@ for(row in 1:nrow(config$Summarize_Functions)){
         subData2 <- subset(subData1, Query==query)
         
         if (config$Dimensions$X_Dimensions$Size){
-          title <- paste(scenario, ", ",query, ", Function: ", concatPhases(phases), " (Y: Log2) (X: Log2)", sep='')
+          title <- paste(query, ", Function: ", concatPhases(phases), sep='')
           settings <- setTitle(settings, title)
           settings <- setDimensions(settings, "Size", "MetricValue")
           settings <- setLabels(settings, "Size", "Time (ms)")
@@ -85,6 +86,7 @@ for(row in 1:nrow(config$Summarize_Functions)){
             fileName <- paste(rootPath, scenario, "-", query, "-GroupBy-Tool-",metric, "-", name, ".", extension, sep='')
             savePlot(subData2, settings, phases, fileName)
           }
+          write.csv(ddply(subData2, c("Tool", "Size"), summarise, N=length(MetricValue), mean=mean(MetricValue), sd=sd(MetricValue)), file = paste(rootPath, scenario, "-", query, "-GroupBy-Tool-",metric, "-", name, ".csv", sep=''))
         }
         
         if (config$Dimensions$X_Dimensions$Iteration){
@@ -94,13 +96,13 @@ for(row in 1:nrow(config$Summarize_Functions)){
           settings <- setAxis(settings, "Continuous", yAxis)
           for(size in uniqueSizes){
             subData3 <- subset(subData2, Size==size)
-            title <- paste(scenario, ", ", query, ", Size: ", size, ", Function:  ", concatPhases(phases),
-                           " (Y: Log2) (X: Continuous)", sep='')
+            title <- paste(scenario, ", ", query, ", Size: ", size, ", Function:  ", concatPhases(phases), sep='')
             for (extension in config$Extension){
               fileName <- paste(rootPath, scenario, "-", query, "-Size-", size, "-GroupBy-Tool-", metric, "-", name, ".", extension, sep='')
               settings <- setTitle(settings, title)
               savePlot(subData3, settings, phases, fileName)
             }
+            write.csv(subData3, file = paste(rootPath, scenario, "-", query, "-Size-", size, "-GroupBy-Tool-", metric, "-", name, ".csv", sep=''))
           }
         }     
       }
